@@ -27,7 +27,7 @@ Example of partially trained agents can be found in the `checkpoints` directory.
 
 Demo bots:
  - `melee-bc-1-ema-demo` trained for about 2 hours on my GPU (RTX 2060 Super), on half the public dataset
- - `melee-bc-16-ema-demo` trained for about 5 hours, on less than half the public dataset
+ - ~~`melee-bc-16-ema-demo` trained for about 5 hours, on less than half the public dataset~~ (this one doesn't work after training became instable).
 
 Both bots would greatly benefits from longer training, especially the 16 delay one.
 
