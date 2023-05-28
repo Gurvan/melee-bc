@@ -26,7 +26,10 @@ def is_game_start(state):
 
 def is_ko_state(prev_state, state):
     kos = (prev_state > 0xA) * (state <= 0xA)
-    kos = np.concatenate([kos[0:1], kos], axis=0)
+    try:
+        kos = np.concatenate([kos[0:1], kos], axis=0)
+    except:
+        kos = torch.cat([kos[0:1], kos], dim=0)
     return kos
 
 
@@ -45,9 +48,14 @@ def compute_reward(state, ko_mult=1.0, hitstun_mult=0.001):
 
 def compute_episode_end(state):
     game_starts = is_game_start(state)
-    episode_ends = np.concatenate(
-        [game_starts[1:], np.ones_like(game_starts[0:1])], axis=0
-    )
+    try:
+        episode_ends = np.concatenate(
+            [game_starts[1:], np.ones_like(game_starts[0:1])], axis=0
+        )
+    except:
+        episode_ends = torch.cat(
+            [game_starts[1:], torch.ones_like(game_starts[0:1])], dim=0
+        )
     return episode_ends
 
 
@@ -311,14 +319,131 @@ class MeleeDataloader(AbstractMeleeDataset):
                 yield x
 
 
+class MeleeInMemoryDataloader:
+    def __init__(
+        self,
+        path: str | Path,
+        data_types: Sequence[str] = ["actions", "states", "metadata"],
+        device="cuda",
+        **_
+    ):
+        path = Path(path)
+        if not (
+            "actions" in data_types
+            or "states" in data_types
+            or "metadata" in data_types
+        ):
+            raise
+        self.actions = None
+        self.states = None
+        self.metadata = None
+        self.actions_processed = False
+        self.states_processed = False
+        self.metadata_processed = False
+        if "actions" in data_types:
+            self.actions = torch.tensor(
+                np.load(path / "filtered" / "actions.npy"),
+                dtype=torch.int8,
+                device=device,
+            )
+            self.actions[..., 4] = self.actions[..., 4].to(torch.uint8)
+            self.max_len = self.actions.shape[0]
+        if "states" in data_types:
+            self.states = torch.tensor(
+                np.load(path / "filtered" / "states.npy"),
+                dtype=torch.float16,
+                device=device,
+            )
+            self.states[..., 0] = self.states[..., 0].clamp(0, MAX_ACTIONSTATE)
+            self.states[..., 1] = self.states[..., 1].clamp(0, 119.0)
+            self.states[..., 2] = self.states[..., 2].clamp(0, 300.0)
+            self.states[..., 3] = self.states[..., 3].clamp(-1.0, 1.0)
+            self.states[..., 4] = self.states[..., 4].clamp(-275.0, 275.0)
+            self.states[..., 5] = self.states[..., 5].clamp(-170.0, 340.0)
+            self.states[..., 6] = self.states[..., 6].clamp(0, MAX_SHIELD)
+            self.states[..., 7] = self.states[..., 7].clamp(0, MAX_JUMPS)
+            self.max_len = self.states.shape[0]
+        if "metadata" in data_types:
+            self.metadata = torch.tensor(
+                np.load(path / "filtered" / "metadata.npy"),
+                dtype=torch.uint8,
+                device=device,
+            )
+            self.metadata[..., 0] = self.metadata[..., 0].clamp(0, NUM_STAGES - 1)
+            self.metadata[..., 1:] = self.metadata[..., 1:].clamp(0, NUM_CHARACTERS - 1)
+            self.max_len = self.metadata.shape[0]
+
+    def len(self, batch_size):
+        return self.max_len // batch_size
+
+    def get_samples(
+        self,
+        batch_size: int,
+        device: torch.device | str,
+        return_rewards=False,
+        low_discrepancy_index=0,
+    ):
+        l = self.max_len // batch_size * batch_size
+        num_batches = l // batch_size
+        if self.metadata is not None and not self.metadata_processed:
+            self.metadata = rearrange(
+                self.metadata[:l], "(B N) T D -> N B T D", B=batch_size
+            )[..., 0, :]
+            self.metadata_processed = True
+
+        if self.actions is not None and not self.actions_processed:
+            self.actions = rearrange(
+                self.actions[:l],
+                "(B N) T P D -> N B P T D",
+                B=batch_size,
+            )
+            self.actions_processed = True
+
+        if self.states is not None and not self.states_processed:
+            self.states = rearrange(
+                self.states[:l], "(B N) T P D -> N B P T D", B=batch_size
+            )
+            self.states_processed = True
+
+        returns = None
+        if return_rewards and self.states is not None:
+            returns = torch.zeros_like(self.states[:, :, 0, :, 1])
+
+        def _get_one_item(idx):
+            if self.actions is not None:
+                a = self.actions[idx]
+                yield a
+            if self.states is not None:
+                s = self.states[idx]
+                yield s
+            if self.metadata is not None:
+                m = self.metadata[idx]
+                yield m
+            if returns is not None:
+                r = returns[idx]
+                yield r
+
+        perm = torch.randperm(num_batches)
+
+        for idx in perm:
+            x = list(_get_one_item(idx))
+            if len(x) == 1:
+                x = x[0]
+            yield x
+
+
 if __name__ == "__main__":
-    loader = MeleeDataloader(seq_len=256, path="/media/DATA/Melee/FloatData/")
+    # loader = MeleeDataloader(seq_len=256, path="/media/DATA/Melee/FloatData/")
+    loader = MeleeInMemoryDataloader(seq_len=256, path="/media/DATA/Melee/FloatData/")
     data = loader.get_samples(1024, return_rewards=True, device="cuda")
 
     m = torch.inf
     M = -torch.inf
     for _ in range(100000):
-        _, s, _, r = next(data)
+        try:
+            _, s, _, r = next(data)
+        except StopIteration:
+            break
         m = min(r.min(), m)
         M = max(r.max(), M)
         print(m, M)

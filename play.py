@@ -15,6 +15,9 @@ from melee_utils import (
     process_action,
 )
 from models import BCModel
+def is_damage_state(state):
+    return (state >= 0x4B) * (state <= 0x5B)
+
 
 
 def load_model(path):
@@ -76,7 +79,10 @@ class Agent:
         if self.state_manager.state_counter == 0:
             self.state_manager.state_counter += self.num_frames_per_stack
             context = self.prepare_input(*self.state_manager.get_both())
-            actions, infos = self.model.inference(*context, temperature=1, topk=0)
+            t = 1
+            if is_damage_state(context[1][-1][0][0]) or is_damage_state(context[2][-1][0][0]):
+                t = 0.8
+            actions, infos = self.model.inference(*context, temperature=t, topk=0)
             actions = [actions[:, i] for i in range(actions.shape[1])]
             for i, a in enumerate(actions):
                 self.state_manager.update_action(a)
@@ -178,8 +184,8 @@ def play(
             melee.MenuHelper.menu_helper_simple(
                 gamestate,
                 controller,
-                melee.Character.FOX,
-                melee.Stage.BATTLEFIELD,
+                melee.Character.MARTH,
+                melee.Stage.FINAL_DESTINATION,
                 "",
                 autostart=True,
                 swag=False,
@@ -187,8 +193,8 @@ def play(
             melee.MenuHelper.menu_helper_simple(
                 gamestate,
                 controller_opponent,
-                melee.Character.MARTH,
-                melee.Stage.BATTLEFIELD,
+                melee.Character.FOX,
+                melee.Stage.FINAL_DESTINATION,
                 costume=1,
                 autostart=False,
                 swag=False,

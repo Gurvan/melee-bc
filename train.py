@@ -9,7 +9,7 @@ from tqdm import tqdm, trange
 from accelerate import Accelerator
 from ema_pytorch import EMA
 
-from dataset import MeleeDataloader
+from dataset import MeleeDataloader, MeleeInMemoryDataloader
 from models import BCModelConfig, BCModel
 
 
@@ -77,6 +77,7 @@ def prepare_data(actions, states, metadata, rewards, epoch=0):
         rewards,
     )
 
+
 def init_scheduler(config, accelerator, optimizer, steps):
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
@@ -86,6 +87,7 @@ def init_scheduler(config, accelerator, optimizer, steps):
         pct_start=0.01,
     )
     return accelerator.prepare(lr_scheduler)
+
 
 def train(config: TrainConfig):
     accelerator = Accelerator(
@@ -102,7 +104,13 @@ def train(config: TrainConfig):
         update_every=1,
     )
 
-    data = MeleeDataloader(
+    # if config.checkpoint is None:
+    if True:
+        loader_type = MeleeDataloader
+    else:
+        loader_type = MeleeInMemoryDataloader
+
+    data = loader_type(
         seq_len=config.seq_len + 1 + 2 * model.config.delay,
         path=config.datapath,
         data_types=["actions", "states", "metadata"],
@@ -119,6 +127,13 @@ def train(config: TrainConfig):
         steps_per_epoch=data.len(config.batch_size),
         pct_start=0.01,
     )
+    if config.checkpoint is not None:
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1,
+            end_factor=1,
+            last_epoch=-1,
+        )
 
     model_ema = accelerator.prepare(model_ema)
     model_ema.eval()
@@ -155,7 +170,7 @@ def train(config: TrainConfig):
             ),
             total=data.len(config.batch_size),
         )
-        for (actions, states, metadata, rewards) in progress_bar:
+        for actions, states, metadata, rewards in progress_bar:
             if config.overfit_one_batch:
                 actions, states, metadata, rewards = (
                     actions_overfit,
@@ -187,7 +202,12 @@ def train(config: TrainConfig):
 
             if step % 1000 == 0:
                 accelerator.wait_for_everyone()
-                save_model(config.name+f"-{model.config.delay}", accelerator, model, model_ema)
+                save_model(
+                    config.name + f"-{model.config.delay}",
+                    accelerator,
+                    model,
+                    model_ema,
+                )
             samples_seen += actions.shape[0]
             infos = {
                 "samples_seen": samples_seen,
@@ -215,33 +235,39 @@ def train(config: TrainConfig):
                 path=config.datapath,
                 data_types=["actions", "states", "metadata"],
             )
-            lr_scheduler = init_scheduler(config, accelerator, optimizer, data.len(config.batch_size))
+            lr_scheduler = init_scheduler(
+                config, accelerator, optimizer, data.len(config.batch_size)
+            )
 
     accelerator.end_training()
     accelerator.wait_for_everyone()
-    save_model(config.name+f"-{model.config.delay}", accelerator, model, model_ema)
+    save_model(config.name + f"-{model.config.delay}", accelerator, model, model_ema)
 
 
 if __name__ == "__main__":
     model_config = BCModelConfig(
-        memory_dim=256,
+        memory_dim=512,
         memory_layers=2,
-        policy_hidden_dims=512,
-        policy_dim=512,
-        delay=2,
+        policy_hidden_dims=1024,
+        policy_dim=768,
+        delay=1,
+
+        controller_decoder_emb_dim=128,
     )
     config = TrainConfig(
         overfit_one_batch=False,
         # overfit_one_batch=True,
-        name="melee-bc",
-        log=False,
-        # log=True,
-        datapath="data",
-        epochs=7,
-        batch_size=64,
-        learning_rate=3e-4,
-        seq_len=32,
-        checkpoint=None, # load existing checkpoint for finetuning
+        name="melee-bc-ranked",
+        # log=False,
+        log=True,
+        # datapath="data",
+        datapath="/media/DATA/Melee/RankedFizzi/FloatData/",
+        epochs=2,
+        batch_size=128,
+        learning_rate=1e-4,
+        seq_len=64,
+        # checkpoint=None,  # load existing checkpoint for finetuning
+        checkpoint="checkpoints/melee-bc-1-ema",  # load existing checkpoint for finetuning
         model_config=model_config,
         increase_delay_every_epoch=False,
     )
