@@ -71,8 +71,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Define the arguments
-    parser.add_argument("npy_dir", help="directory containing '.npy' files", required=True)
-    parser.add_argument("output_dir", help="directory to store the memory mapped data", required=True)
+    parser.add_argument("npy_dir", help="directory containing '.npy' files")
+    parser.add_argument("output_dir", help="directory to store the memory mapped data")
     
     # Parse the command line arguments
     args = parser.parse_args()
@@ -88,21 +88,21 @@ if __name__ == "__main__":
 
     total_len = sum(files_len)
 
-    actions_mmap = RaggedMmap.empty(
+    actions_mmap = RaggedMmap._empty(
         out_dir=outpath / "mmap_actions_tmp",
         dtype="int8",
         shape=(total_len, 2, actions_size),
         order="C",
     )
 
-    states_mmap = RaggedMmap.empty(
+    states_mmap = RaggedMmap._empty(
         out_dir=outpath / "mmap_states_tmp",
         dtype="float32",
         shape=(total_len, 2, states_size),
         order="C",
     )
 
-    metadata_mmap = RaggedMmap.empty(
+    metadata_mmap = RaggedMmap._empty(
         out_dir=outpath / "mmap_metadata_tmp",
         dtype="int16",
         shape=(total_len, 3),

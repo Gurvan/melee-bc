@@ -40,7 +40,7 @@ In order to train of finetune the bot you need to convert the `slp` files to a m
 
 Two scripts are provided in the `scripts` directory:
 
-- `parse_slp_to_npy.go` is a `golang` scripts the cinverts the `slp` replays to Nmpuy for `npy`.
+- `parse_slp_to_npy.go` is a `golang` scripts the converts the `slp` replays to Nmpuy for `npy`.
 - `make_mmap_dataset.py` convert the `npy` files to a memory mapped data format that is very efficient to load and speeds up training a lot.
 
 See the `Scripts` section.
@@ -55,6 +55,7 @@ Once you converted the dataset you can train with `python train.py`. I suggest y
 This will take a while if you process the entire public dataset. The `slp` files can be in multiple subfolders.
 Using multiple threads really speeds things up, but only up until the point where the conversion becomes memory bound.
 
+Note: you need to have Go installed, and might have to run `go env -w GO111MODULE=auto` and `go get github.com/sbinet/npyio`.
 
 
 `python scripts/make_mmap_dataset.py npy_files_dir output_dir`

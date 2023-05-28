@@ -316,13 +316,13 @@ class Predictor(nn.Module):
 
     def unroll(self, actions, state, *args):
         for action in actions.unbind(-2):
-            state = self(action, state, *args)
+            state = self(action, state.detach(), *args)
         return state
 
     def unroll_keep_all(self, actions, state, *args):
         states = []
         for action in actions.unbind(-2):
-            state = self(action, state, *args)
+            state = self(action, state.detach(), *args)
             states.append(state)
         return torch.stack(states, dim=-2)
 
@@ -353,6 +353,8 @@ class BCModelConfig:
     policy_dim: int
     delay: int
 
+    controller_decoder_emb_dim: int = 64
+
     def __post_init__(self):
         assert self.delay > 0
 
@@ -378,7 +380,7 @@ class BCModel(nn.Module):
             output_dim=config.policy_dim,
             use_layer_norm=True,
         )
-        self.action_decoder = ControllerDecoder(config.policy_dim)
+        self.action_decoder = ControllerDecoder(config.policy_dim, emb_dim=config.controller_decoder_emb_dim)
 
     def _split_by_delay(self, x, dim=-2):
         d = self.config.delay
