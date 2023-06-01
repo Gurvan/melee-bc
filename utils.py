@@ -36,8 +36,8 @@ def forget_mult(f, x, h=None, time_dim=-2):
     return torch.stack(result, dim=-2)
 
 
-if torch.__version__.startswith("2."):
-    forget_mult = torch.compile(forget_mult)
+# if torch.__version__.startswith("2."):
+#     forget_mult = torch.compile(forget_mult)
 
 
 if __name__ == "__main__":
